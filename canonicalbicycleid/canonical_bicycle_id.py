@@ -65,10 +65,10 @@ def create_rst_table(tableData, roll, steer, fileName=None):
 
     rstTable = ''
 
-    rstTable += '+' + (sum(largest[:2]) + 5) * '=' + '+'
+    rstTable += '+' + (sum(largest[:2]) + 5) * '-' + '+'
 
     for i in range(len(head[1:])):
-        rstTable += (sum(largest[i * 3 + 2:i * 3 + 5]) + 8) * '=' + '+'
+        rstTable += (sum(largest[i * 3 + 2:i * 3 + 5]) + 8) * '-' + '+'
     rstTable += '\n'
 
     rstTable += '|' + (sum(largest[:2]) + 5) * ' ' + '|'
@@ -78,7 +78,7 @@ def create_rst_table(tableData, roll, steer, fileName=None):
     rstTable += '\n'
 
     for j, row in enumerate(allData):
-        if j in [0, 1]:
+        if j in [0]:
             dash = '='
         else:
             dash = '-'
@@ -255,7 +255,7 @@ def mean_arm(riders):
 
     data = {}
     for rider in riders:
-        m = loadmat('armsAB-' + rider + '.mat', squeeze_me=True)
+        m = loadmat('../data/armsAB-' + rider + '.mat', squeeze_me=True)
         data[rider] = {}
         data[rider]['speed'] = m['speed']
         data[rider]['A'] = m['stateMatrices']
@@ -659,7 +659,7 @@ def benchmark_canon_to_dict(M, C1, K0, K2, H):
     T = [Tphi,
          Tdelta]
 
-    Later force:
+    Lateral force:
     F = Fcl
 
     """

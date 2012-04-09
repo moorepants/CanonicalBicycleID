@@ -2,15 +2,15 @@
 import cPickle
 import numpy as np
 import matplotlib.pyplot as plt
-import canonical_system_id as csi
+from canonicalbicycleid import canonical_bicycle_id as cbi
 from dtk import bicycle, control
 
 allRiders = ['Charlie', 'Jason', 'Luke']
 # create the comparison models
-canon = csi.load_benchmark_canon(allRiders)
-H = csi.lateral_force_contribution(allRiders)
+canon = cbi.load_benchmark_canon(allRiders)
+H = cbi.lateral_force_contribution(allRiders)
 
-with open('idMatrices.p') as f:
+with open('../data/idMatrices.p') as f:
     idMatrices = cPickle.load(f)
 
 def plot(canon, H, riders, environments, idMats):
@@ -20,7 +20,7 @@ def plot(canon, H, riders, environments, idMats):
     for env in environments:
         filename += '-' + env.replace(' ', '')
 
-    filename = 'canonical-id-plots/' + filename[1:]
+    filename = '../plots/' + filename[1:]
 
     print filename
 
@@ -28,7 +28,7 @@ def plot(canon, H, riders, environments, idMats):
     vf = 10.
     num = 100
 
-    mM, mC1, mK0, mK2, mH = csi.mean_canon(riders, canon, H)
+    mM, mC1, mK0, mK2, mH = cbi.mean_canon(riders, canon, H)
     speeds, mAs, mBs = bicycle.benchmark_state_space_vs_speed(mM, mC1, mK0, mK2,
             v0=v0, vf=vf, num=num)
     w, v = control.eigen_vs_parameter(mAs)
@@ -40,7 +40,7 @@ def plot(canon, H, riders, environments, idMats):
     w, v = control.eigen_vs_parameter(iAs)
     iEigenvalues, iEigenvectors = control.sort_modes(w, v)
 
-    aAs, aBs, aSpeed = csi.mean_arm(riders)
+    aAs, aBs, aSpeed = cbi.mean_arm(riders)
     w, v = control.eigen_vs_parameter(aAs)
     aEigenvalues, aEigenvectors = control.sort_modes(w, v)
 

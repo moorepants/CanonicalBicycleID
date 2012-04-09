@@ -1,13 +1,13 @@
 import numpy as np
 from numpy import testing
 import bicycledataprocessor as bdp
-import canonical_system_id as csi
+import canonicalbicycleid.canonical_bicycle_id as cbi
 
 def test_benchmark_time_series():
     dataset = bdp.DataSet()
     trial = bdp.Run('700', dataset)
 
-    timeSeries = csi.benchmark_time_series(trial)
+    timeSeries = cbi.benchmark_time_series(trial)
 
     testing.assert_allclose(trial.taskSignals['RollAngle'], timeSeries['p'])
     testing.assert_allclose(trial.taskSignals['RollRate'], timeSeries['pD'])
@@ -25,12 +25,12 @@ def test_benchmark_lstsq_matrices():
     dataset = bdp.DataSet()
     trial = bdp.Run('700', dataset)
 
-    A, B, F = csi.whipple_state_space(trial.metadata['Rider'], 1.0)
+    A, B, F = cbi.whipple_state_space(trial.metadata['Rider'], 1.0)
     H = np.dot(np.linalg.inv(B[2:]), F[2:])
 
-    timeSeries = csi.benchmark_time_series(trial, subtractMean=False)
+    timeSeries = cbi.benchmark_time_series(trial, subtractMean=False)
     M, C1, K0, K2 = trial.bicycle.canonical(nominal=True)
-    fixedValues = csi.benchmark_canon_to_dict(M, C1, K0, K2, H)
+    fixedValues = cbi.benchmark_canon_to_dict(M, C1, K0, K2, H)
 
     rollParams = ['Mpp', 'Mpd',
                   'C1pp', 'C1pd',
@@ -38,7 +38,7 @@ def test_benchmark_lstsq_matrices():
                   'K2pp', 'K2pd',
                   'HpF']
 
-    A, B = csi.benchmark_lstsq_matrices(rollParams, timeSeries, fixedValues)
+    A, B = cbi.benchmark_lstsq_matrices(rollParams, timeSeries, fixedValues)
 
     testing.assert_allclose(trial.taskSignals['RollRate'].time_derivative(),
             A[:, 0])
@@ -64,7 +64,7 @@ def test_benchmark_lstsq_matrices():
                   'K0pp', 'K0pd',
                   'K2pp', 'K2pd']
 
-    A, B = csi.benchmark_lstsq_matrices(rollParams, timeSeries, fixedValues)
+    A, B = cbi.benchmark_lstsq_matrices(rollParams, timeSeries, fixedValues)
 
     testing.assert_allclose(trial.taskSignals['RollRate'].time_derivative(),
             A[:, 0])
@@ -87,7 +87,7 @@ def test_benchmark_lstsq_matrices():
     steerParams = ['Mdp', 'Mdd', 'C1dp', 'C1dd', 'K0dp', 'K0dd', 'K2dp',
             'K2dd', 'HdF']
 
-    A, B = csi.benchmark_lstsq_matrices(steerParams, timeSeries, fixedValues)
+    A, B = cbi.benchmark_lstsq_matrices(steerParams, timeSeries, fixedValues)
 
     testing.assert_allclose(trial.taskSignals['RollRate'].time_derivative(),
             A[:, 0])
@@ -115,7 +115,7 @@ def test_benchmark_lstsq_matrices():
     steerParams = ['Mdp', 'Mdd', 'C1dp', 'C1dd', 'K0dp', 'K0dd', 'K2dp',
             'K2dd']
 
-    A, B = csi.benchmark_lstsq_matrices(steerParams, timeSeries, fixedValues)
+    A, B = cbi.benchmark_lstsq_matrices(steerParams, timeSeries, fixedValues)
 
     testing.assert_allclose(trial.taskSignals['RollRate'].time_derivative(),
             A[:, 0])
@@ -142,7 +142,7 @@ def test_benchmark_lstsq_matrices():
 
     steerParams = ['Mdp', 'C1dd', 'K0dp', 'K2dp', 'K2dd']
 
-    A, B = csi.benchmark_lstsq_matrices(steerParams, timeSeries, fixedValues)
+    A, B = cbi.benchmark_lstsq_matrices(steerParams, timeSeries, fixedValues)
 
     testing.assert_allclose(trial.taskSignals['RollRate'].time_derivative(),
             A[:, 0])
@@ -188,7 +188,7 @@ def test_benchmark_canon_to_dict():
            'HpF': H[0, 0],
            'HdF': H[1, 0]}
 
-    entries = csi.benchmark_canon_to_dict(M, C1, K0, K2, H)
+    entries = cbi.benchmark_canon_to_dict(M, C1, K0, K2, H)
 
     for k, v in cor.items():
         assert v == entries[k]

@@ -27,9 +27,12 @@ Dependencies
 ------------
 
 - setuptools
+- NumPy
+- SciPy
 - BicycleParameters
 - BicycleDataProcessor
 - DynamicistToolKit
+- AutolevToolKit
 - Uncertainties
 
 Data

@@ -78,8 +78,8 @@ for env in environments:
     print('Done.')
 
 # save all of the identified matrices to file
-with open('idMatrices.p', 'w') as f:
+with open('../data/idMatrices.p', 'w') as f:
     cPickle.dump(idMatrices, f)
 
-with open('covarMatrices.p', 'w') as f:
+with open('../data/covarMatrices.p', 'w') as f:
     cPickle.dump(covarMatrices, f)
