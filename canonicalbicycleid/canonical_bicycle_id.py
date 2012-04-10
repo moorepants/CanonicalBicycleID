@@ -1,10 +1,171 @@
+import os
 import numpy as np
 from scipy.io import loadmat
+import matplotlib.pyplot as plt
 from uncertainties import ufloat
 import bicycleparameters as bp
 import bicycledataprocessor as bdp
-from dtk.bicycle import benchmark_to_moore, pitch_from_roll_and_steer
+from dtk import control, bicycle
 from LateralForce import LinearLateralForce
+
+def plot_bode(speeds, iAs, iBs, wAs, wBs, aAs, aBs, w=None):
+    """Returns the steer torque and roll torque to roll angle Bode plots for
+    four speeds and the three models.
+
+    Parameters
+    ----------
+    speeds : ndarray, shape(4,)
+        Four speeds to evaluate the Bode plot at.
+    iAs : ndarray, shape(4,4,4)
+    iBs : ndarray, shape(4,4,2)
+    wAs : ndarray, shape(4,4,4)
+    wBs : ndarray, shape(4,4,2)
+    aAs : ndarray, shape(101,4,4)
+        The arm model A matrices for speeds 0 through 10 m/s.
+    aBs : ndarray, shape(101,4,3)
+        The arm model B matrices for speeds 0 through 10 m/s.
+    w : ndarray, shape(n,), optional
+        The frequecies to evaulate at.
+
+    Returns
+    -------
+    figs : list
+        The roll torque to roll angle and steer torque to roll angle Bode plots.
+
+    """
+
+    if len(speeds) != 4:
+        raise ValueError('Only four speeds please.')
+
+    inputNames = ['$T_\phi$', '$T_\delta$']
+    stateNames = ['$\phi$', '$\delta$', '$\dot{\phi}$', '$\dot{\delta}$']
+    outputNames = ['$\phi$', '$\delta$']
+
+    systems = []
+
+    # only output the roll angle
+    C = np.array([[1.0, 0.0, 0.0, 0.0],
+                  [0.0, 1.0, 0.0, 0.0]])
+    D = np.array([[0.0, 0.0],
+                  [0.0, 0.0]])
+
+    # identified model
+    for i, sys in enumerate(zip(iAs, iBs)):
+        A, B = sys
+        systems.append(control.StateSpace(A, B, C, D, name='Identification ' +
+            str(speeds[i]), stateNames=stateNames, inputNames=inputNames,
+            outputNames=outputNames))
+
+    # whipple model
+    for i, sys in enumerate(zip(wAs, wBs)):
+        A, B = sys
+        systems.append(control.StateSpace(A, B, C, D, name='Whipple ' +
+            str(speeds[i]), stateNames=stateNames, inputNames=inputNames,
+            outputNames=outputNames))
+
+    # arm model
+    indices = np.int32(np.round(speeds * 10))
+    for i, sys in enumerate(zip(aAs[indices], aBs[indices])):
+        A, B = sys
+        systems.append(control.StateSpace(A, B[:, [0, 1]], C, D, name='Arms ' +
+            str(speeds[i]), stateNames=stateNames, inputNames=inputNames,
+            outputNames=outputNames))
+
+    if w is None:
+        w = np.logspace(-1, 2)
+
+    linestyles = ['-', '--', '-.', ':'] * 3
+
+    colors = ['k'] * len(speeds) + ['b'] * len(speeds) + ['r'] * len(speeds)
+
+    bode = control.Bode(w, *tuple(systems), linestyles=linestyles, colors=colors)
+    bode.plot()
+
+    return bode.figs
+
+def plot_rlocus(speeds, iEig, wEig, aEig):
+    """Returns a root locus plot of the eigenvalues of the identified, Whipple,
+    and arm bicycle models.
+
+    Parameters
+    ----------
+    speeds : ndarray, shape(n,)
+        The increasing or decreasing values of speed.
+    iEig : ndarray, shape(n,m)
+        The eigenvalues of the identified model with respect to `speeds`.
+    wEig : ndarray, shape(n,m)
+        The eigenvalues of the Whipple model with respect to `speeds`.
+    aEig : ndarray, shape(n,m)
+        The eigenvalues of the Arm model with respect to `speeds`.
+
+    Returns
+    -------
+    fig : matplotlib.Figure instance
+        The resulting plot.
+
+    """
+
+    fig = control.plot_root_locus(speeds, iEig, edgecolors='k')
+    control.plot_root_locus(speeds, wEig, fig=fig,
+            marker='d', edgecolors='k')
+    control.plot_root_locus(speeds, aEig, fig=fig,
+            marker='<', edgecolors='k')
+
+    mx = np.ceil(np.max(abs(np.hstack((iEig.imag, wEig.imag,
+        aEig.imag)).flatten())))
+
+    fig.axes[0].set_xlim((-mx, mx))
+    fig.axes[0].set_ylim((-mx, mx))
+
+    return fig
+
+def plot_rlocus_parts(speeds, iEig, wEig, aEig):
+    """Returns a plot of the real and imaginary parts of the eigenvalues of the
+    identified, Whipple, and arm bicycle models.
+
+    Parameters
+    ----------
+    speeds : ndarray, shape(n,)
+        The increasing or decreasing values of speed.
+    iEig : ndarray, shape(n,m)
+        The eigenvalues of the identified model with respect to `speeds`.
+    wEig : ndarray, shape(n,m)
+        The eigenvalues of the Whipple model with respect to `speeds`.
+    aEig : ndarray, shape(n,m)
+        The eigenvalues of the Arm model with respect to `speeds`.
+
+    Returns
+    -------
+    fig : matplotlib.Figure instance
+        The resulting plot.
+
+    """
+
+    fig = plt.figure()
+    ax = fig.add_subplot(1, 1, 1)
+
+    iRealLines = ax.plot(speeds, iEig.real, 'k-', label='_nolegend_')
+    iRealLines[0].set_label('I (re)')
+    iImagLines = ax.plot(speeds, abs(iEig.imag), 'k--', label='_nolegend_')
+    iImagLines[0].set_label('I (im)')
+
+    wRealLines = ax.plot(speeds, wEig.real, 'b-', label='_nolegend_')
+    wRealLines[0].set_label('W (re)')
+    wImagLines = ax.plot(speeds, abs(wEig.imag), 'b--', label='_nolegend_')
+    wImagLines[0].set_label('W (im)')
+
+    aRealLines = ax.plot(speeds, aEig.real, 'r-', label='_nolegend_')
+    aRealLines[0].set_label('A (re)')
+    aImagLines = ax.plot(speeds, abs(aEig.imag), 'r--', label='_nolegend_')
+    aImagLines[0].set_label('A (im)')
+
+    ax.set_ylim((-15, 10))
+    ax.set_xlabel('Speed [m/s]')
+    ax.set_ylabel('Real and Imaginary Parts of the Eigenvalues [1/s]')
+
+    plt.legend()
+
+    return fig
 
 def create_rst_table(tableData, roll, steer, fileName=None):
     """Returns a reStructuredText version of the table data.
@@ -148,39 +309,30 @@ def table_data(roll, steer, mat, cov):
         for par in steer:
             add_par_to_row(1, row, steer)
 
+    riders = ['Charlie', 'Jason', 'Luke', 'All']
+    rMap = {x[0]: [x] for x in riders}
+    environments = ['Horse Treadmill', 'Pavillion Floor', 'All']
+    eMap = {x[0]: [x] for x in environments}
+
     for k, v in mat.items():
-        if k == 'All':
-            row = ['A', 'A']
-            values = benchmark_canon_to_dict(*v)
-            mean = mean_canon(allRiders, canon, H)
-            theory = benchmark_canon_to_dict(*mean)
-            covar = cov[k]
-            add_to_row(row, covar)
-            data.append(row)
-        elif k == 'Horse Treadmill' or k == 'Pavillion Floor':
-            row = ['A', k[0]]
-            values = benchmark_canon_to_dict(*v)
-            mean = mean_canon(allRiders, canon, H)
-            theory = benchmark_canon_to_dict(*mean)
-            covar = cov[k]
-            add_to_row(row, covar)
-            data.append(row)
-        elif k in allRiders:
-            M, C, K1, K2 = canon[k]
-            theory = benchmark_canon_to_dict(M, C, K1, K2, H[k])
-            for envName, envVal in v.items():
-                if envName == 'All':
-                    row = [k[0], 'A']
-                    values = benchmark_canon_to_dict(*envVal)
-                    covar = cov[k][envName]
-                    add_to_row(row, covar)
-                    data.append(row)
-                else:
-                    row = [k[0], envName[0]]
-                    values = benchmark_canon_to_dict(*envVal)
-                    covar = cov[k][envName]
-                    add_to_row(row, covar)
-                    data.append(row)
+        r, e = k.split('-')
+        if r == 'A':
+            riders = ['Charlie', 'Jason', 'Luke']
+        else:
+            riders = rMap[r]
+        if e == 'A':
+            environments = ['Horse Treadmill', 'Pavillion Floor']
+        else:
+            environments = eMap[e]
+
+        row = [r, e]
+        values = benchmark_canon_to_dict(*v)
+        mean = mean_canon(riders, canon, H)
+        theory = benchmark_canon_to_dict(*mean)
+        covar = cov[k]
+        add_to_row(row, covar)
+        data.append(row)
+
     return data
 
 def benchmark_canonical_variance(A, B, xhat, resid):
@@ -255,7 +407,8 @@ def mean_arm(riders):
 
     data = {}
     for rider in riders:
-        m = loadmat('../data/armsAB-' + rider + '.mat', squeeze_me=True)
+        loc = os.path.dirname(__file__)
+        m = loadmat(os.path.join(loc, '../data/armsAB-' + rider + '.mat'), squeeze_me=True)
         data[rider] = {}
         data[rider]['speed'] = m['speed']
         data[rider]['A'] = m['stateMatrices']
@@ -429,9 +582,9 @@ def load_benchmark_canon(riders):
             bName = 'Rigid'
         else:
             bName= 'Rigidcl'
-        bicycle = bp.Bicycle(bName, path)
-        bicycle.add_rider(rider)
-        canon[rider] = bicycle.canonical(nominal=True)
+        bike = bp.Bicycle(bName, path)
+        bike.add_rider(rider)
+        canon[rider] = bike.canonical(nominal=True)
 
     return canon
 
@@ -531,6 +684,9 @@ def stack_A_B(As, Bs, runNums):
         except NameError:
             totA = A
             totB = B
+
+    print("Number of runs: {}".format(len(runNums)))
+    print("Shape of A: {}".format(totA.shape))
 
     return totA, totB
 
@@ -839,18 +995,18 @@ def whipple_state_space(rider, speed):
         bicycleName = 'Rigid'
     elif rider == 'Charlie' or rider == 'Luke':
         bicycleName = 'Rigidcl'
-    bicycle = bp.Bicycle(bicycleName, pathToData)
-    bicycle.add_rider(rider)
+    bike = bp.Bicycle(bicycleName, pathToData)
+    bike.add_rider(rider)
 
     # set the model parameters
-    benchmarkPar = bp.io.remove_uncertainties(bicycle.parameters['Benchmark'])
-    benchmarkPar['xcl'] = bicycle.parameters['Measured']['xcl']
-    benchmarkPar['zcl'] = bicycle.parameters['Measured']['zcl']
-    moorePar = benchmark_to_moore(benchmarkPar)
+    benchmarkPar = bp.io.remove_uncertainties(bike.parameters['Benchmark'])
+    benchmarkPar['xcl'] = bike.parameters['Measured']['xcl']
+    benchmarkPar['zcl'] = bike.parameters['Measured']['zcl']
+    moorePar = bicycle.benchmark_to_moore(benchmarkPar)
     bicycleModel.set_parameters(moorePar)
 
     # set the default equilibrium point
-    pitchAngle = pitch_from_roll_and_steer(0., 0., moorePar['rf'],
+    pitchAngle = bicycle.pitch_from_roll_and_steer(0., 0., moorePar['rf'],
             moorePar['rr'], moorePar['d1'], moorePar['d2'], moorePar['d3'])
     wheelAngSpeed = -speed / moorePar['rr']
     equilibrium = np.zeros(len(bicycleModel.stateNames))

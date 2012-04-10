@@ -1,6 +1,6 @@
 #!/usr/bin/env python
 import cPickle
-import canonical_system_id as csi
+from canonicalbicycleid import canonical_bicycle_id as cbi
 
 riders = ['Charlie', 'Jason', 'Luke']
 environments = ['Horse Treadmill', 'Pavillion Floor']
@@ -9,73 +9,53 @@ maneuvers = ['Balance',
              'Balance With Disturbance',
              'Track Straight Line With Disturbance']
 
-runs = csi.select_runs(riders, maneuvers, environments)
-
+canon = cbi.load_benchmark_canon(riders)
 # This gives the proportion of the lateral force which should be added to the
 # steer torque and roll torque equations in the canonical equations.
-H = csi.lateral_force_contribution(riders)
+H = cbi.lateral_force_contribution(riders)
 
+runs = cbi.select_runs(riders, maneuvers, environments)
 # try to load in all of the runs for the given run numbers.
-trials, errors = csi.load_trials(runs, H)
+trials, errors = cbi.load_trials(runs, H)
+goodRuns = list(set(runs).difference(errors))
 
+# pick the free parameters
 rollParams = ['Mpd', 'C1pd', 'K0pd']
 steerParams = ['Mdd', 'C1dp', 'C1dd',
                'K0dd', 'K2dd', 'HdF']
-canon = csi.load_benchmark_canon(riders)
 
 idMatrices = {}
 covarMatrices = {}
 
-print('Computing the estimate for all runs.')
-runs = list(set(runs).difference(errors))
-means = csi.mean_canon(riders, canon, H)
-idMat, rollCovar, steerCovar = csi.enforce_symmetry(runs, trials, rollParams,
-        steerParams, *means)
-idMatrices['All'] = idMat
-covarMatrices['All'] = (rollCovar, steerCovar)
-print('Done.')
+# These are the 12 models that we are interested in.
+combinations = [(x, y) for x in (riders + ['All']) for y in (environments +
+        ['All'])]
 
-for rider in riders:
-    idMatrices[rider] = {}
-    covarMatrices[rider] = {}
+for combo in combinations:
+    print('Computing the estimate for riders: {} and environments: {}'.format(combo[0], combo[1]))
+    if combo[0] == 'All':
+        riders = ['Charlie', 'Jason', 'Luke']
+    else:
+        riders = [combo[0]]
+    if combo[1] == 'All':
+        environments = ['Horse Treadmill', 'Pavillion Floor']
+    else:
+        environments = [combo[1]]
 
-    # this find the model for each rider in both environments
-    print('Computing the estimate for {} in both environments.'.format(rider))
-    runs = csi.select_runs([rider], maneuvers, environments)
+    runs = cbi.select_runs(riders, maneuvers, environments)
     runs = list(set(runs).difference(errors))
 
-    means = csi.mean_canon(riders, canon, H)
-    idMat, rollCovar, steerCovar = csi.enforce_symmetry(runs, trials,
+    means = cbi.mean_canon(riders, canon, H)
+    idMat, rollCovar, steerCovar = cbi.enforce_symmetry(runs, trials,
             rollParams, steerParams, *means)
-    idMatrices[rider]['All'] = idMat
-    covarMatrices[rider]['All'] = (rollCovar, steerCovar)
+
+    idMatrices[combo[0][0] + '-' + combo[1][0]] = idMat
+    covarMatrices[combo[0][0] + '-' + combo[1][0]] = (rollCovar, steerCovar)
+
     print('Done.')
 
-    # this finds the model for each rider in each environment
-    for env in environments:
-        print('Computing the estimate for {} on {}.'.format(rider, env))
-        runs = csi.select_runs([rider], maneuvers, [env])
-        runs = list(set(runs).difference(errors))
-
-        means = csi.mean_canon(riders, canon, H)
-        idMat, rollCovar, steerCovar = csi.enforce_symmetry(runs, trials,
-                rollParams, steerParams, *means)
-        idMatrices[rider][env] = idMat
-        covarMatrices[rider][env] = (rollCovar, steerCovar)
-        print('Done.')
-
-# for each environment calculate the model for all riders
-for env in environments:
-    print('Computing the estimate for all riders on {}.'.format(env))
-    runs = csi.select_runs(riders, maneuvers, [env])
-    runs = list(set(runs).difference(errors))
-
-    means = csi.mean_canon(riders, canon, H)
-    idMat, rollCovar, steerCovar = csi.enforce_symmetry(runs, trials,
-            rollParams, steerParams, *means)
-    idMatrices[env] = idMat
-    covarMatrices[env] = (rollCovar, steerCovar)
-    print('Done.')
+with open('../data/goodRuns.p', 'w') as f:
+    cPickle.dump(goodRuns, f)
 
 # save all of the identified matrices to file
 with open('../data/idMatrices.p', 'w') as f:
