@@ -5,8 +5,57 @@ import matplotlib.pyplot as plt
 from uncertainties import ufloat
 import bicycleparameters as bp
 import bicycledataprocessor as bdp
-from dtk import control, bicycle
+from dtk import control, bicycle, process
 from LateralForce import LinearLateralForce
+
+def input_prediction(timeSeries, canon):
+    """Returns the predicted steer torque and lateral force for the run the
+    given time series."""
+
+    if len(canon) == 4:
+        M, C, K, H = canon
+    elif len(canon) == 5:
+        M, C1, K0, K2, H = canon
+        v = timeSeries['v'].mean()
+        g = timeSeries['g']
+        C = v * C1
+        K = g * K0 + v**2 * K2
+
+    q = np.array([timeSeries['p'],
+                  timeSeries['d']])
+    qd = np.array([timeSeries['pD'],
+                   timeSeries['dD']])
+    qdd = np.array([timeSeries['pDD'],
+                    timeSeries['dDD']])
+    T = np.array([np.zeros_like(timeSeries['T']),
+                  timeSeries['T']])
+    F = timeSeries['F'].reshape(1, len(timeSeries['F']))
+
+    predicted = np.dot(M, qdd) + np.dot(C, qd) + np.dot(K, q)
+
+    measured = T + np.dot(H.reshape(2, 1), F)
+
+    #rollRsq = process.fit_goodness(TplusHF[0], T[0])[0]
+    #steerRsq = process.fit_goodness(TplusHF[1], T[1])[0]
+
+    rollRsq = (1 - np.linalg.norm(predicted[0] - measured[0]) /
+            np.linalg.norm(measured[0] - np.mean(measured[0])))
+    steerRsq = (1 - np.linalg.norm(predicted[1] - measured[1]) /
+            np.linalg.norm(measured[1] - np.mean(measured[1])))
+
+    fig = plt.figure()
+
+    time = timeSeries['d'].time()
+
+    rollAx = fig.add_subplot(2, 1, 1)
+    rollAx.plot(time, measured[0], time, predicted[0])
+    rollAx.legend(('Measured', 'Predicted {:.1%}'.format(rollRsq)))
+
+    steerAx = fig.add_subplot(2, 1, 2)
+    steerAx.plot(time, measured[1], time, predicted[1])
+    steerAx.legend(('Measured', 'Predicted {:.1%}'.format(steerRsq)))
+
+    return rollRsq, steerRsq, fig
 
 def plot_bode(speeds, iAs, iBs, wAs, wBs, aAs, aBs, w=None):
     """Returns the steer torque and roll torque to roll angle Bode plots for
@@ -17,9 +66,13 @@ def plot_bode(speeds, iAs, iBs, wAs, wBs, aAs, aBs, w=None):
     speeds : ndarray, shape(4,)
         Four speeds to evaluate the Bode plot at.
     iAs : ndarray, shape(4,4,4)
+        The identified model A matrices for the four speeds.
     iBs : ndarray, shape(4,4,2)
+        The identified model B matrices for the four speeds.
     wAs : ndarray, shape(4,4,4)
+        The Whipple model A matrices for the four speeds.
     wBs : ndarray, shape(4,4,2)
+        The Whipple model B matrices for the four speeds.
     aAs : ndarray, shape(101,4,4)
         The arm model A matrices for speeds 0 through 10 m/s.
     aBs : ndarray, shape(101,4,3)
@@ -52,24 +105,25 @@ def plot_bode(speeds, iAs, iBs, wAs, wBs, aAs, aBs, w=None):
     # identified model
     for i, sys in enumerate(zip(iAs, iBs)):
         A, B = sys
-        systems.append(control.StateSpace(A, B, C, D, name='Identification ' +
-            str(speeds[i]), stateNames=stateNames, inputNames=inputNames,
-            outputNames=outputNames))
+        systems.append(control.StateSpace(A, B, C, D,
+            name='I [{:1.0f} m/s]'.format(speeds[i]), stateNames=stateNames,
+            inputNames=inputNames, outputNames=outputNames))
 
     # whipple model
     for i, sys in enumerate(zip(wAs, wBs)):
         A, B = sys
-        systems.append(control.StateSpace(A, B, C, D, name='Whipple ' +
-            str(speeds[i]), stateNames=stateNames, inputNames=inputNames,
+        systems.append(control.StateSpace(A, B, C, D,
+            name='W [{:1.0f} m/s]'.format(speeds[i]),
+            stateNames=stateNames, inputNames=inputNames,
             outputNames=outputNames))
 
     # arm model
     indices = np.int32(np.round(speeds * 10))
     for i, sys in enumerate(zip(aAs[indices], aBs[indices])):
         A, B = sys
-        systems.append(control.StateSpace(A, B[:, [0, 1]], C, D, name='Arms ' +
-            str(speeds[i]), stateNames=stateNames, inputNames=inputNames,
-            outputNames=outputNames))
+        systems.append(control.StateSpace(A, B[:, [0, 1]], C, D,
+            name='A [{:1.0f} m/s]'.format(speeds[i]), stateNames=stateNames,
+            inputNames=inputNames, outputNames=outputNames))
 
     if w is None:
         w = np.logspace(-1, 2)
@@ -211,7 +265,7 @@ def create_rst_table(tableData, roll, steer, fileName=None):
 
     # top row
     head = [''] + [':math:`' + latexMap[p] + '`' for p in (roll + steer)]
-    subhead = [['R', 'E'] + ['Value', ':math:`\sigma`', '% Difference'] * (len(roll) +
+    subhead = [['R', 'E'] + ['Value', ':math:`\sigma`', '% Diff'] * (len(roll) +
             len(steer))]
 
     allData = subhead + tableData
